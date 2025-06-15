@@ -67,22 +67,30 @@ class ElasticsearchService:
 
         # Add database filter if db is provided
         if params.get("db"):
-            query["bool"]["filter"].append({"term": {"db": params["db"]}})
+            if len(params["db"]) == 1:
+                # Use term query for single value
+                query["bool"]["filter"].append({"term": {"db": params["db"][0]}})
+            else:
+                # Use terms query for multiple values
+                query["bool"]["filter"].append({"terms": {"db": params["db"]}})
 
-        # # Add date range filter if dates are provided
-        # if params.get('date_from') or params.get('date_to'):
-        #     date_filter = {'range': {'datum': {}}}
-        #     if params.get('date_from'):
-        #         date_filter['range']['datum']['gte'] = params['date_from'].isoformat()
-        #     if params.get('date_to'):
-        #         date_filter['range']['datum']['lte'] = params['date_to'].isoformat()
-        #     query['bool']['filter'].append(date_filter)
+        # Add date range filter if dates are provided
+        if params.get('date_from') or params.get('date_to'):
+            date_filter = {'range': {'datum': {}}}
+            if params.get('date_from'):
+                date_filter['range']['datum']['gte'] = params['date_from'].isoformat()
+            if params.get('date_to'):
+                date_filter['range']['datum']['lte'] = params['date_to'].isoformat()
+            query['bool']['filter'].append(date_filter)
 
         # Add photographer filter if provided
         if params.get("photographer"):
-            query["bool"]["filter"].append(
-                {"term": {"fotografen": params["photographer"]}}
-            )
+            if len(params["photographer"]) == 1:
+                # Use term query for single value
+                query["bool"]["filter"].append({"term": {"fotografen": params["photographer"][0]}})
+            else:
+                # Use terms query for multiple values
+                query["bool"]["filter"].append({"terms": {"fotografen": params["photographer"]}})
 
         # Build the complete search body
         search_body = {
@@ -122,6 +130,45 @@ class ElasticsearchService:
         es_field = sort_field_mapping.get(sort_by, sort_by)
 
         return [{es_field: {"order": sort_order}}]
+
+    def get_global_aggregations(self):
+        """
+        Fetch global aggregations for filter options (db and photographers).
+
+        Returns:
+            dict: Raw Elasticsearch aggregations response.
+        """
+        try:
+            aggregation_query = {
+                "size": 0,  # No hits needed, only aggregations
+                "aggs": {
+                    "all_docs": {
+                        "global": {},
+                        "aggs": {
+                            "db_terms": {
+                                "terms": {
+                                    "field": "db",
+                                    "size": 10,
+                                    "order": {"_count": "desc"}
+                                }
+                            },
+                            "photographer_terms": {
+                                "terms": {
+                                    "field": "fotografen",
+                                    "size": 10000,
+                                    "order": {"_count": "desc"}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            response = self.client.search(index=self.index, body=aggregation_query)
+            print(f"Raw Elasticsearch aggregations response: {response.get('aggregations')}") # Debug log
+            return response.get("aggregations", {})
+        except Exception as e:
+            logger.error(f"Error fetching global aggregations: {str(e)}")
+            raise
 
     def get_by_id(self, media_id):
         """

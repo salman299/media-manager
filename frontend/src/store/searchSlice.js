@@ -6,15 +6,14 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:800
 export const fetchSearchResults = createAsyncThunk(
   "search/fetchResults",
   async (
-    { query, selectedDb, selectedPhotographer, page, pageSize },
+    { query, selectedDbs, selectedPhotographers, page, pageSize },
     { rejectWithValue }
   ) => {
     try {
       const params = new URLSearchParams();
       params.append("query", query);
-      if (selectedDb) params.append("db", selectedDb);
-      if (selectedPhotographer)
-        params.append("photographer", selectedPhotographer);
+      selectedDbs.forEach(db => params.append("db", db));
+      selectedPhotographers.forEach(photographer => params.append("photographer", photographer));
       params.append("page", page);
       params.append("page_size", pageSize);
 
@@ -30,7 +29,6 @@ export const fetchSearchResults = createAsyncThunk(
       });
 
       // Log response details for debugging
-      console.log("Response status:", response.status);
       console.log(
         "Response headers:",
         Object.fromEntries(response.headers.entries())
@@ -70,19 +68,45 @@ export const fetchSearchResults = createAsyncThunk(
   }
 );
 
+// Async thunk for fetching global aggregations
+export const fetchAggregations = createAsyncThunk(
+  "search/fetchAggregations",
+  async (_, { rejectWithValue }) => {
+    try {
+      const url = `${API_BASE_URL}/api/aggregations/`;
+      console.log("Fetching aggregations from URL:", url);
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error("Failed to fetch aggregations");
+      }
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Aggregations fetch error:", error);
+      return rejectWithValue(error.message || "Failed to fetch aggregations");
+    }
+  }
+);
+
 const initialState = {
   results: [],
   aggregations: {
     db_terms: { buckets: [] },
     photographer_terms: { buckets: [] },
   },
+  globalAggregations: { // New state for global aggregations
+    db_terms: { buckets: [] },
+    photographer_terms: { buckets: [] },
+  },
   total: 0,
   searchQuery: "",
-  selectedDb: null,
-  selectedPhotographer: null,
+  selectedDbs: [],
+  selectedPhotographers: [],
   page: 1,
   isLoading: false,
   error: null,
+  aggregationsLoading: false, // New loading state for aggregations
+  aggregationsError: null,    // New error state for aggregations
 };
 
 const searchSlice = createSlice({
@@ -95,14 +119,24 @@ const searchSlice = createSlice({
       state.results = [];
     },
     setSelectedDb: (state, action) => {
-      state.selectedDb =
-        action.payload === state.selectedDb ? null : action.payload;
+      const db = action.payload;
+      const index = state.selectedDbs.indexOf(db);
+      if (index === -1) {
+        state.selectedDbs.push(db);
+      } else {
+        state.selectedDbs.splice(index, 1);
+      }
       state.page = 1;
       state.results = [];
     },
     setSelectedPhotographer: (state, action) => {
-      state.selectedPhotographer =
-        action.payload === state.selectedPhotographer ? null : action.payload;
+      const photographer = action.payload;
+      const index = state.selectedPhotographers.indexOf(photographer);
+      if (index === -1) {
+        state.selectedPhotographers.push(photographer);
+      } else {
+        state.selectedPhotographers.splice(index, 1);
+      }
       state.page = 1;
       state.results = [];
     },
@@ -110,8 +144,8 @@ const searchSlice = createSlice({
       state.page += 1;
     },
     clearFilters: (state) => {
-      state.selectedDb = null;
-      state.selectedPhotographer = null;
+      state.selectedDbs = [];
+      state.selectedPhotographers = [];
       state.page = 1;
       state.results = [];
     },
@@ -129,12 +163,24 @@ const searchSlice = createSlice({
         } else {
           state.results = [...state.results, ...action.payload.results];
         }
-        state.aggregations = action.payload.aggregations;
         state.total = action.payload.total;
       })
       .addCase(fetchSearchResults.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload || "Failed to fetch search results";
+      })
+      .addCase(fetchAggregations.pending, (state) => {
+        state.aggregationsLoading = true;
+        state.aggregationsError = null;
+      })
+      .addCase(fetchAggregations.fulfilled, (state, action) => {
+        state.aggregationsLoading = false;
+        // Store global aggregations
+        state.globalAggregations = action.payload;
+      })
+      .addCase(fetchAggregations.rejected, (state, action) => {
+        state.aggregationsLoading = false;
+        state.aggregationsError = action.payload || "Failed to fetch aggregations";
       });
   },
 });

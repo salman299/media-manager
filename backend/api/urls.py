@@ -5,7 +5,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from .views import MediaAPIView
+from .views import MediaAPIView, AggregationAPIView
 
 # Create a router and register our viewsets with it
 router = DefaultRouter()
@@ -14,6 +14,7 @@ router = DefaultRouter()
 urlpatterns = [
     # API endpoints
     path("search/", MediaAPIView.as_view(), name="media-list"),
+    path("aggregations/", AggregationAPIView.as_view(), name="aggregations-list"),
     # Authentication endpoints
     path("token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),

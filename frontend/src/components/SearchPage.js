@@ -6,6 +6,7 @@ import {
   setSelectedDb,
   setSelectedPhotographer,
   incrementPage,
+  fetchAggregations,
 } from "../store/searchSlice";
 
 function SearchPage() {
@@ -15,11 +16,14 @@ function SearchPage() {
     aggregations,
     total,
     searchQuery,
-    selectedDb,
-    selectedPhotographer,
+    selectedDbs,
+    selectedPhotographers,
     page,
     isLoading,
     error,
+    globalAggregations,
+    aggregationsLoading,
+    aggregationsError,
   } = useSelector((state) => state.search);
 
   const [inputValue, setInputValue] = React.useState("");
@@ -41,18 +45,23 @@ function SearchPage() {
     [isLoading, results.length, total, dispatch]
   );
 
-  // Fetch data when dependencies change
+  // Fetch search results when dependencies change
   useEffect(() => {
     dispatch(
       fetchSearchResults({
         query: searchQuery,
-        selectedDb,
-        selectedPhotographer,
+        selectedDbs,
+        selectedPhotographers,
         page,
         pageSize,
       })
     );
-  }, [dispatch, searchQuery, selectedDb, selectedPhotographer, page]);
+  }, [dispatch, searchQuery, selectedDbs, selectedPhotographers, page, pageSize]);
+
+  // Fetch global aggregations when component mounts
+  useEffect(() => {
+    dispatch(fetchAggregations());
+  }, [dispatch]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -96,33 +105,44 @@ function SearchPage() {
             </button>
           </form>
 
+          {/* Results Count */}
+          {!isLoading && (
+            <div className="mt-3 text-sm text-gray-600">
+              Viewing {results.length} of {total} results
+            </div>
+          )}
+
           {/* Filter Tags */}
-          {(selectedDb || selectedPhotographer) && (
+          {(selectedDbs.length > 0 || selectedPhotographers.length > 0) && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {selectedDb && (
-                <div className="inline-flex items-center bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
-                  <span>Database: {selectedDb}</span>
+              {selectedDbs.map((db) => (
+                <div
+                  key={db}
+                  className="inline-flex items-center bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
+                >
+                  <span>Database: {db}</span>
                   <button
-                    onClick={() => handleDbFilter(selectedDb)}
+                    onClick={() => handleDbFilter(db)}
                     className="ml-2 text-blue-600 hover:text-blue-800 focus:outline-none"
                   >
                     ×
                   </button>
                 </div>
-              )}
-              {selectedPhotographer && (
-                <div className="inline-flex items-center bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
-                  <span>Photographer: {selectedPhotographer}</span>
+              ))}
+              {selectedPhotographers.map((photographer) => (
+                <div
+                  key={photographer}
+                  className="inline-flex items-center bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
+                >
+                  <span>Photographer: {photographer}</span>
                   <button
-                    onClick={() =>
-                      handlePhotographerFilter(selectedPhotographer)
-                    }
+                    onClick={() => handlePhotographerFilter(photographer)}
                     className="ml-2 text-blue-600 hover:text-blue-800 focus:outline-none"
                   >
                     ×
                   </button>
                 </div>
-              )}
+              ))}
             </div>
           )}
         </div>
@@ -208,54 +228,81 @@ function SearchPage() {
       {/* Right: Filters */}
       <aside className="w-full md:w-72 bg-white rounded-lg shadow-md p-6 h-fit">
         <h3 className="text-lg font-bold mb-4">Refine Your Search</h3>
-        {/* DB Filter */}
-        <div className="mb-6">
-          <div className="font-semibold text-gray-700 mb-2">Database</div>
-          <ul>
-            {aggregations.db_terms.buckets.map((bucket) => (
-              <li key={bucket.key}>
-                <button
-                  className={`flex items-center justify-between w-full px-2 py-1 rounded hover:bg-blue-50 mb-1 text-left ${
-                    selectedDb === bucket.key
-                      ? "bg-blue-100 text-blue-700 font-bold"
-                      : ""
-                  }`}
-                  onClick={() => handleDbFilter(bucket.key)}
-                  type="button"
-                >
-                  <span>{bucket.key}</span>
-                  <span className="ml-2 text-xs">
-                    {formatCount(bucket.doc_count)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-        {/* Photographer Filter */}
-        <div>
-          <div className="font-semibold text-gray-700 mb-2">Photographer</div>
-          <ul className="max-h-60 overflow-y-auto pr-1">
-            {aggregations.photographer_terms.buckets.map((bucket) => (
-              <li key={bucket.key}>
-                <button
-                  className={`flex items-center justify-between w-full px-2 py-1 rounded hover:bg-blue-50 mb-1 text-left ${
-                    selectedPhotographer === bucket.key
-                      ? "bg-blue-100 text-blue-700 font-bold"
-                      : ""
-                  }`}
-                  onClick={() => handlePhotographerFilter(bucket.key)}
-                  type="button"
-                >
-                  <span>{bucket.key}</span>
-                  <span className="ml-2 text-xs">
-                    {formatCount(bucket.doc_count)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
+
+        {aggregationsLoading && (
+          <div className="flex justify-center items-center py-4">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        )}
+
+        {aggregationsError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-4 text-sm">
+            Error loading filters: {aggregationsError}
+          </div>
+        )}
+
+        {!aggregationsLoading && !aggregationsError && (
+          <>
+            {/* DB Filter */}
+            <div className="mb-6">
+              <div className="font-semibold text-gray-700 mb-2">Database</div>
+              <ul className="max-h-60 overflow-y-auto pr-1">
+                {globalAggregations.db_terms?.buckets.map((bucket) => (
+                  <li key={bucket.key}>
+                    <button
+                      className={`flex items-center justify-between w-full px-2 py-1 rounded hover:bg-blue-50 mb-1 text-left ${
+                        selectedDbs.includes(bucket.key)
+                          ? "bg-blue-100 text-blue-700 font-bold"
+                          : ""
+                      }`}
+                      onClick={() => handleDbFilter(bucket.key)}
+                      type="button"
+                    >
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedDbs.includes(bucket.key)}
+                          onChange={() => {}}
+                          className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span>{bucket.key}</span>
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {/* Photographer Filter */}
+            <div>
+              <div className="font-semibold text-gray-700 mb-2">Photographer</div>
+              <ul className="max-h-60 overflow-y-auto pr-1">
+                {globalAggregations.photographer_terms?.buckets.map((bucket) => (
+                  <li key={bucket.key}>
+                    <button
+                      className={`flex items-center justify-between w-full px-2 py-1 rounded hover:bg-blue-50 mb-1 text-left ${
+                        selectedPhotographers.includes(bucket.key)
+                          ? "bg-blue-100 text-blue-700 font-bold"
+                          : ""
+                      }`}
+                      onClick={() => handlePhotographerFilter(bucket.key)}
+                      type="button"
+                    >
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedPhotographers.includes(bucket.key)}
+                          onChange={() => {}}
+                          className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span>{bucket.key}</span>
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
+        )}
       </aside>
     </div>
   );

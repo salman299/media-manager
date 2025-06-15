@@ -7,7 +7,12 @@ class SearchQuerySerializer(serializers.Serializer):
     """Serializer for search query parameters."""
 
     query = serializers.CharField(required=False, allow_blank=True)
-    db = serializers.CharField(required=False, allow_blank=True)
+    db = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list,
+        allow_empty=True
+    )
     page = serializers.IntegerField(default=1, min_value=1)
     page_size = serializers.IntegerField(default=20, min_value=1, max_value=100)
     sort_by = serializers.CharField(required=False, allow_blank=True)
@@ -16,7 +21,12 @@ class SearchQuerySerializer(serializers.Serializer):
     )
     date_from = serializers.DateField(required=False)
     date_to = serializers.DateField(required=False)
-    photographer = serializers.CharField(required=False, allow_blank=True)
+    photographer = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list,
+        allow_empty=True
+    )
 
 
 class MediaSourceSerializer(serializers.Serializer):
@@ -73,3 +83,20 @@ class ElasticsearchResponseSerializer(serializers.Serializer):
     total = serializers.IntegerField()
     results = ElasticsearchHitSerializer(many=True)
     aggregations = serializers.DictField(required=False)
+
+
+class AggregationBucketSerializer(serializers.Serializer):
+    """Serializer for individual aggregation buckets."""
+    key = serializers.CharField()
+    doc_count = serializers.IntegerField()
+
+
+class AggregationTermsSerializer(serializers.Serializer):
+    """Serializer for aggregation terms (e.g., db_terms, photographer_terms)."""
+    buckets = AggregationBucketSerializer(many=True)
+
+
+class GlobalAggregationsSerializer(serializers.Serializer):
+    """Serializer for global aggregations response."""
+    db_terms = AggregationTermsSerializer(required=False)
+    photographer_terms = AggregationTermsSerializer(required=False)
